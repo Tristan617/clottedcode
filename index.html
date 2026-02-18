@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Compression &amp; Encoding Demo</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+<style>
+  :root {
+    --bg:      #0f1117;
+    --surface: #1a1d27;
+    --border:  #2d3148;
+    --text:    #e2e8f0;
+    --muted:   #8892a4;
+    --green:   #22c55e;
+    --red:     #ef4444;
+    --blue:    #3b82f6;
+    --orange:  #f97316;
+    --yellow:  #eab308;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 2rem;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 1.4rem; margin-bottom: 0.25rem; }
+  .subtitle { color: var(--muted); font-size: 0.82rem; margin-bottom: 2rem; }
+
+  /* Controls */
+  .controls { display: flex; gap: 2rem; flex-wrap: wrap; align-items: flex-end; margin-bottom: 1.5rem; }
+  .control-group label {
+    display: block; color: var(--muted); font-size: 0.7rem;
+    text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.4rem;
+  }
+  .btn-group { display: flex; gap: 0.25rem; flex-wrap: wrap; }
+  .btn {
+    padding: 0.35rem 0.75rem; border: 1px solid var(--border);
+    background: var(--surface); color: var(--text); font-family: inherit;
+    font-size: 0.78rem; cursor: pointer; border-radius: 4px; transition: all 0.12s;
+  }
+  .btn.active { background: var(--blue); border-color: var(--blue); color: #fff; }
+  .btn:hover:not(.active) { border-color: var(--blue); }
+  .size-input {
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--text); font-family: inherit; font-size: 0.78rem;
+    padding: 0.35rem 0.6rem; border-radius: 4px; width: 90px;
+  }
+
+  /* Data preview */
+  .data-preview {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px; padding: 0.85rem 1rem; margin-bottom: 2rem;
+  }
+  .preview-label { font-size: 0.75rem; color: var(--muted); margin-bottom: 0.4rem; }
+  .preview-label span { color: var(--text); }
+  .preview-text {
+    font-size: 0.73rem; color: var(--muted); word-break: break-all;
+    line-height: 1.55; max-height: 3.5rem; overflow: hidden;
+  }
+
+  /* Section */
+  .section { margin-bottom: 2.5rem; }
+  .section-title {
+    font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.15em;
+    color: var(--muted); margin-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border); padding-bottom: 0.4rem;
+  }
+
+  /* Table */
+  table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+  th {
+    text-align: left; padding: 0.45rem 0.75rem; color: var(--muted);
+    font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.07em;
+    font-weight: normal; border-bottom: 1px solid var(--border);
+  }
+  td { padding: 0.45rem 0.75rem; border-bottom: 1px solid rgba(45,49,72,0.5); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+
+  /* Bar */
+  .bar-cell { width: 180px; }
+  .bar-wrap { background: rgba(45,49,72,0.6); border-radius: 3px; height: 10px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s ease; }
+
+  /* Ratio colors */
+  .good    { color: var(--green); }
+  .bad     { color: var(--red); }
+  .neutral { color: var(--yellow); }
+
+  /* Tags */
+  .tag {
+    display: inline-block; padding: 0.1rem 0.35rem;
+    border-radius: 3px; font-size: 0.67rem; margin-left: 0.3rem;
+  }
+  .tag-blue   { background: rgba(59,130,246,0.15); color: var(--blue); }
+  .tag-orange { background: rgba(249,115,22,0.15);  color: var(--orange); }
+
+  /* Footnote */
+  .footnote { color: var(--muted); font-size: 0.7rem; margin-top: 1rem; line-height: 1.7; }
+  .footnote b { color: var(--text); }
+</style>
+</head>
+<body>
+
+<h1>Compression &amp; Encoding Demo</h1>
+<p class="subtitle">Compare how algorithms behave across different data types &mdash; size efficiency vs. fault tolerance</p>
+
+<div class="controls">
+  <div class="control-group">
+    <label>Data Type</label>
+    <div class="btn-group" id="dataTypeBtns"></div>
+  </div>
+  <div class="control-group">
+    <label>Input Size (bytes)</label>
+    <input type="number" class="size-input" id="sizeInput" value="4096" min="64" max="65536" step="64">
+  </div>
+</div>
+
+<div class="data-preview">
+  <div class="preview-label"><span id="previewName"></span> &mdash; <span id="previewDesc"></span></div>
+  <div class="preview-text" id="previewText"></div>
+</div>
+
+<div class="section">
+  <div class="section-title">Compression Algorithms</div>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:220px">Algorithm</th>
+        <th>Input</th>
+        <th>Output</th>
+        <th>Ratio</th>
+        <th>Space saved</th>
+        <th class="bar-cell">Size (visual)</th>
+      </tr>
+    </thead>
+    <tbody id="compTbody"></tbody>
+  </table>
+</div>
+
+<div class="section">
+  <div class="section-title">Redundancy &amp; Fault-Tolerance Schemes</div>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:220px">Scheme</th>
+        <th>Input</th>
+        <th>Output</th>
+        <th>Overhead</th>
+        <th>Fault tolerance</th>
+        <th class="bar-cell">Size (visual)</th>
+      </tr>
+    </thead>
+    <tbody id="redTbody"></tbody>
+  </table>
+  <p class="footnote">
+    * Reed-Solomon overhead is <b>data-independent</b> — the multiplier is always <b>n&frasl;k</b> regardless of content.<br>
+    * RS(<i>n</i>,<i>k</i>): <i>k</i> data shards + (<i>n</i>&minus;<i>k</i>) parity shards. Can recover from any (<i>n</i>&minus;<i>k</i>) lost shards.<br>
+    * Replication stores full copies; simpler but less space-efficient at equivalent fault tolerance.
+  </p>
+</div>
+
+<script>
+// ── Data generators ───────────────────────────────────────────────────────────
+
+const DATA_TYPES = [
+  {
+    key: 'compressible',
+    name: 'Highly Compressible',
+    desc: 'single repeated byte (0x41 "A")',
+    generate(n) { return new Uint8Array(n).fill(0x41); }
+  },
+  {
+    key: 'text',
+    name: 'Natural Text',
+    desc: 'English prose — moderate compressibility',
+    generate(n) {
+      const src =
+        'Data compression reduces the number of bits needed to represent information. ' +
+        'Reed-Solomon codes provide error correction for storage and transmission. ' +
+        'Erasure coding trades computational overhead for storage efficiency. ' +
+        'The quick brown fox jumps over the lazy dog near the riverbank. ' +
+        'Replication is simple to implement but expensive in storage cost. ';
+      const enc = new TextEncoder();
+      const buf = [];
+      while (buf.length < n) {
+        for (const b of enc.encode(src)) { if (buf.length >= n) break; buf.push(b); }
+      }
+      return new Uint8Array(buf);
+    }
+  },
+  {
+    key: 'structured',
+    name: 'Structured (JSON)',
+    desc: 'repeated JSON records — good compressibility',
+    generate(n) {
+      const rec = '{"id":1,"user":"alice","score":9001,"active":true,"tags":["x","y"]},';
+      const enc = new TextEncoder();
+      const buf = [0x5b]; // '['
+      while (buf.length < n - 1) {
+        for (const b of enc.encode(rec)) { if (buf.length >= n - 1) break; buf.push(b); }
+      }
+      buf.push(0x5d); // ']'
+      return new Uint8Array(buf);
+    }
+  },
+  {
+    key: 'incompressible',
+    name: 'Incompressible',
+    desc: 'pseudo-random bytes — near-zero compressibility',
+    generate(n) {
+      const buf = new Uint8Array(n);
+      let s = 0xdeadbeef;
+      for (let i = 0; i < n; i++) {
+        s = (Math.imul(s, 1664525) + 1013904223) | 0;
+        buf[i] = s >>> 24;
+      }
+      return buf;
+    }
+  }
+];
+
+// ── Compression algorithms ────────────────────────────────────────────────────
+
+function rleEncode(data) {
+  const out = [];
+  for (let i = 0; i < data.length;) {
+    const b = data[i];
+    let c = 1;
+    while (i + c < data.length && data[i + c] === b && c < 255) c++;
+    out.push(c, b);
+    i += c;
+  }
+  return new Uint8Array(out);
+}
+
+const COMPRESSIONS = [
+  { name: 'None (baseline)',      encode: d => d },
+  { name: 'Run-Length (RLE)',     encode: rleEncode },
+  { name: 'Deflate',              encode: d => pako.deflateRaw(d, { level: 6 }) },
+  { name: 'Gzip',                 encode: d => pako.gzip(d,        { level: 6 }) },
+];
+
+// ── Redundancy schemes ────────────────────────────────────────────────────────
+
+const REDUNDANCY = [
+  { name: '2× Replication',  type: 'replication', n: 2,  k: 1 },
+  { name: '3× Replication',  type: 'replication', n: 3,  k: 1 },
+  { name: 'RS(4, 2)',         type: 'rs',          n: 4,  k: 2 },
+  { name: 'RS(6, 4)',         type: 'rs',          n: 6,  k: 4 },
+  { name: 'RS(8, 4)',         type: 'rs',          n: 8,  k: 4 },
+  { name: 'RS(10, 6)',        type: 'rs',          n: 10, k: 6 },
+  { name: 'RS(16, 10)',       type: 'rs',          n: 16, k: 10 },
+];
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function fmt(b) {
+  if (b < 1024)       return b + ' B';
+  if (b < 1024 * 100) return (b / 1024).toFixed(2) + ' KB';
+  return (b / 1024).toFixed(1) + ' KB';
+}
+
+function previewStr(data) {
+  try {
+    const t = new TextDecoder('utf-8', { fatal: true }).decode(data.slice(0, 300));
+    return t.replace(/\n/g, ' ');
+  } catch {
+    return Array.from(data.slice(0, 96))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join(' ');
+  }
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+
+let currentKey  = 'compressible';
+let currentSize = 4096;
+
+function render() {
+  const typeDef = DATA_TYPES.find(d => d.key === currentKey);
+  const data    = typeDef.generate(currentSize);
+
+  document.getElementById('previewName').textContent = typeDef.name;
+  document.getElementById('previewDesc').textContent = typeDef.desc;
+  document.getElementById('previewText').textContent = previewStr(data);
+
+  // ── Compression ──
+  const compResults = COMPRESSIONS.map(c => {
+    const out = c.encode(data);
+    return { name: c.name, inSize: data.length, outSize: out.length, ratio: out.length / data.length };
+  });
+
+  const compMax = Math.max(...compResults.map(r => r.outSize));
+  const compTbody = document.getElementById('compTbody');
+  compTbody.innerHTML = '';
+
+  compResults.forEach(r => {
+    const saved    = 1 - r.ratio;
+    const savedStr = saved > 0.001
+      ? (saved * 100).toFixed(1) + '%'
+      : saved < -0.001
+        ? '−' + ((-saved) * 100).toFixed(1) + '% (expansion)'
+        : '—';
+    const cls      = r.ratio < 0.99 ? 'good' : r.ratio > 1.02 ? 'bad' : 'neutral';
+    const ratioStr = r.ratio.toFixed(3) + '×';
+    const barPct   = (r.outSize / compMax * 100).toFixed(1);
+    const barColor = r.ratio <= 1 ? 'var(--green)' : 'var(--red)';
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${r.name}</td>
+      <td>${fmt(r.inSize)}</td>
+      <td>${fmt(r.outSize)}</td>
+      <td class="${cls}">${ratioStr}</td>
+      <td class="${cls}">${savedStr}</td>
+      <td class="bar-cell">
+        <div class="bar-wrap">
+          <div class="bar-fill" style="width:${barPct}%;background:${barColor}"></div>
+        </div>
+      </td>`;
+    compTbody.appendChild(tr);
+  });
+
+  // ── Redundancy ──
+  const redResults = REDUNDANCY.map(r => {
+    const mult   = r.n / r.k;
+    const outSz  = Math.ceil(data.length * mult);
+    const ftol   = r.n - r.k;
+    return { ...r, inSize: data.length, outSize: outSz, mult, ftol };
+  });
+
+  const redMax   = Math.max(...redResults.map(r => r.outSize));
+  const redTbody = document.getElementById('redTbody');
+  redTbody.innerHTML = '';
+
+  redResults.forEach(r => {
+    const tag     = r.type === 'rs'
+      ? '<span class="tag tag-blue">erasure</span>'
+      : '<span class="tag tag-orange">replication</span>';
+    const ftolStr = r.type === 'replication'
+      ? `${r.ftol} node loss`
+      : `${r.ftol} shard loss (of ${r.n})`;
+    const barPct  = (r.outSize / redMax * 100).toFixed(1);
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${r.name}${tag}</td>
+      <td>${fmt(r.inSize)}</td>
+      <td>${fmt(r.outSize)}</td>
+      <td class="bad">${r.mult.toFixed(2)}×</td>
+      <td>${ftolStr}</td>
+      <td class="bar-cell">
+        <div class="bar-wrap">
+          <div class="bar-fill" style="width:${barPct}%;background:var(--orange)"></div>
+        </div>
+      </td>`;
+    redTbody.appendChild(tr);
+  });
+}
+
+// ── Controls ──────────────────────────────────────────────────────────────────
+
+const btnContainer = document.getElementById('dataTypeBtns');
+DATA_TYPES.forEach(dt => {
+  const btn = document.createElement('button');
+  btn.className = 'btn' + (dt.key === currentKey ? ' active' : '');
+  btn.textContent = dt.name;
+  btn.onclick = () => {
+    currentKey = dt.key;
+    document.querySelectorAll('#dataTypeBtns .btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    render();
+  };
+  btnContainer.appendChild(btn);
+});
+
+document.getElementById('sizeInput').addEventListener('change', e => {
+  const v = parseInt(e.target.value, 10);
+  if (v >= 64 && v <= 65536) { currentSize = v; render(); }
+});
+
+render();
+</script>
+</body>
+</html>
