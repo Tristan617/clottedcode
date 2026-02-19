@@ -1,6 +1,6 @@
 import pako from 'pako';
 import LZ4 from 'lz4js';
-import ZstdCodec from 'zstd-codec';
+import { ZstdCodec } from 'zstd-codec';
 
 // ── Book text (~13 KB of Pride and Prejudice, public domain 1813) ─────────────
 const BOOK_TEXT = `PRIDE AND PREJUDICE
