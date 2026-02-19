@@ -5,7 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Compression Demo</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/lz4js@0.2.0/lz4.js"></script>
+<script>
+// Tell zstd-codec where to find its WASM file when loaded from CDN
+var ZstdCodecConfig = {
+  locateFile: function(path) {
+    return 'https://cdn.jsdelivr.net/npm/zstd-codec@0.1.4/lib/' + path;
+  }
+};
+</script>
 <script src="https://cdn.jsdelivr.net/npm/zstd-codec@0.1.4/lib/zstd-codec.min.js"></script>
 <style>
 :root {
@@ -468,17 +475,124 @@ const DATA_TYPES = [
   }
 ];
 
+// ── Pure-JS LZ4 block codec ───────────────────────────────────────────────────
+// Implements the LZ4 block format (no frame header).
+// Stores original size as a 4-byte LE prefix so decompress doesn't need it.
+
+function lz4Compress(input) {
+  const HASH_BITS = 16, HASH_SIZE = 1 << HASH_BITS, MIN_MATCH = 4;
+  const table = new Int32Array(HASH_SIZE).fill(-1);
+  // Worst case: every byte is a literal + length overhead
+  const dst = new Uint8Array(4 + input.length + Math.ceil(input.length / 255) + 32);
+
+  // Store original size as 4-byte LE prefix
+  const n = input.length;
+  dst[0] = n & 0xff; dst[1] = (n >> 8) & 0xff;
+  dst[2] = (n >> 16) & 0xff; dst[3] = (n >> 24) & 0xff;
+
+  let di = 4, anchor = 0, si = 0;
+  const limit = input.length - 12;
+
+  function hash4(p) {
+    const v = (input[p] | input[p+1]<<8 | input[p+2]<<16 | input[p+3]<<24) >>> 0;
+    return (Math.imul(v, 0x9E3779B1) >>> 16) & (HASH_SIZE - 1);
+  }
+
+  while (si < limit) {
+    const h = hash4(si);
+    const ref = table[h];
+    table[h] = si;
+
+    let mLen = 0;
+    if (ref >= 0 && si - ref < 65536 && si - ref > 0) {
+      if (input[si]===input[ref] && input[si+1]===input[ref+1] &&
+          input[si+2]===input[ref+2] && input[si+3]===input[ref+3]) {
+        let i = si + 4, j = ref + 4;
+        while (i < input.length - 5 && input[i] === input[j]) { i++; j++; }
+        mLen = i - si;
+      }
+    }
+
+    if (mLen < MIN_MATCH) { si++; continue; }
+
+    const lLen = si - anchor, offset = si - ref;
+    const tLit = Math.min(lLen, 15), tMat = Math.min(mLen - MIN_MATCH, 15);
+    dst[di++] = (tLit << 4) | tMat;
+
+    if (lLen >= 15) { let r = lLen - 15; while (r >= 255) { dst[di++] = 255; r -= 255; } dst[di++] = r; }
+    dst.set(input.subarray(anchor, si), di); di += lLen;
+    dst[di++] = offset & 0xff; dst[di++] = (offset >> 8) & 0xff;
+
+    const extraM = mLen - MIN_MATCH;
+    if (extraM >= 15) { let r = extraM - 15; while (r >= 255) { dst[di++] = 255; r -= 255; } dst[di++] = r; }
+
+    si += mLen; anchor = si;
+  }
+
+  // Final literal sequence (no match follows)
+  const lLen = input.length - anchor;
+  const tLit = Math.min(lLen, 15);
+  dst[di++] = tLit << 4;
+  if (lLen >= 15) { let r = lLen - 15; while (r >= 255) { dst[di++] = 255; r -= 255; } dst[di++] = r; }
+  dst.set(input.subarray(anchor), di); di += lLen;
+
+  return dst.slice(0, di);
+}
+
+function lz4Decompress(input) {
+  // Read original size from 4-byte LE prefix
+  const origSize = input[0] | input[1]<<8 | input[2]<<16 | input[3]<<24;
+  const src = input.subarray(4);
+  const out = new Uint8Array(origSize);
+  let si = 0, di = 0;
+
+  while (si < src.length) {
+    const token = src[si++];
+    let lLen = token >> 4;
+    if (lLen === 15) { let b; do { b = src[si++]; lLen += b; } while (b === 255); }
+    out.set(src.subarray(si, si + lLen), di); si += lLen; di += lLen;
+
+    if (si >= src.length) break;
+
+    const offset = src[si] | (src[si+1] << 8); si += 2;
+    let mLen = (token & 0xf) + 4;
+    if ((token & 0xf) === 15) { let b; do { b = src[si++]; mLen += b; } while (b === 255); }
+
+    const start = di - offset;
+    for (let i = 0; i < mLen; i++) out[di++] = out[start + i];
+  }
+
+  return out;
+}
+
 // ── Algorithms ────────────────────────────────────────────────────────────────
 
 let zstdSimple = null;
 let zstdReady  = false;
+let zstdError  = '';
 
 if (typeof ZstdCodec !== 'undefined') {
-  ZstdCodec.run(zstd => {
-    zstdSimple = new zstd.Simple();
-    zstdReady  = true;
+  const timeout = setTimeout(() => {
+    zstdError = 'WASM init timed out';
     refreshAlgoBtns();
-  });
+  }, 8000);
+  try {
+    ZstdCodec.run(zstd => {
+      clearTimeout(timeout);
+      try {
+        zstdSimple = new zstd.Simple();
+        zstdReady  = true;
+      } catch(e) {
+        zstdError = e.message;
+      }
+      refreshAlgoBtns();
+    });
+  } catch(e) {
+    clearTimeout(timeout);
+    zstdError = e.message;
+  }
+} else {
+  zstdError = 'script failed to load';
 }
 
 const ALGOS = [
@@ -496,34 +610,28 @@ const ALGOS = [
   },
   {
     key: 'lz4', name: 'LZ4',
-    available() { return typeof LZ4 !== 'undefined' && typeof LZ4.compress === 'function'; },
-    compress(d) {
-      // lz4js wants a plain Array or Buffer — convert Uint8Array
-      const arr = Array.from(d);
-      const out = LZ4.compress(arr);
-      return out instanceof Uint8Array ? out : new Uint8Array(out);
-    },
-    decompress(d, origSize) {
-      const arr = Array.from(d);
-      const out = LZ4.decompress(arr, origSize);
-      return out instanceof Uint8Array ? out : new Uint8Array(out);
-    },
+    available() { return true; }, // pure JS, always available
+    compress(d)   { return lz4Compress(d); },
+    decompress(d) { return lz4Decompress(d); },
   },
   {
     key: 'zstd_m1', name: 'zstd L\u22121',
     available() { return zstdReady; },
+    unavailableReason() { return zstdError; },
     compress(d)   { return zstdSimple.compress(d, -1); },
     decompress(d) { return zstdSimple.decompress(d); },
   },
   {
     key: 'zstd_1', name: 'zstd L1',
     available() { return zstdReady; },
+    unavailableReason() { return zstdError; },
     compress(d)   { return zstdSimple.compress(d, 1); },
     decompress(d) { return zstdSimple.decompress(d); },
   },
   {
     key: 'zstd_10', name: 'zstd L10',
     available() { return zstdReady; },
+    unavailableReason() { return zstdError; },
     compress(d)   { return zstdSimple.compress(d, 10); },
     decompress(d) { return zstdSimple.decompress(d); },
   },
@@ -638,9 +746,11 @@ function refreshAlgoBtns() {
   ALGOS.forEach(a => {
     const btn = document.createElement('button');
     const avail = a.available();
+    const reason = !avail && a.unavailableReason ? a.unavailableReason() : '';
     btn.className = 'btn' + (a.key === currentAlgoKey && avail ? ' active' : '');
-    btn.textContent = a.key === currentAlgoKey && !avail ? a.name + ' (loading…)' : a.name;
+    btn.textContent = a.name;
     btn.disabled = !avail;
+    btn.title = reason ? `Unavailable: ${reason}` : '';
     btn.dataset.key = a.key;
     btn.onclick = () => {
       if (!avail) return;
