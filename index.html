@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Compression Demo</title>
+<style>
+:root {
+  --bg:      #0f1117;
+  --surface: #1a1d27;
+  --border:  #2d3148;
+  --text:    #e2e8f0;
+  --muted:   #8892a4;
+  --green:   #22c55e;
+  --red:     #ef4444;
+  --blue:    #3b82f6;
+  --orange:  #f97316;
+  --yellow:  #eab308;
+  --purple:  #a855f7;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  padding: 2rem;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+h1 { font-size: 1.4rem; margin-bottom: 0.25rem; }
+.subtitle { color: var(--muted); font-size: 0.82rem; margin-bottom: 2.5rem; }
+
+/* Step headings */
+.step-label {
+  font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.18em;
+  color: var(--muted); margin-bottom: 0.6rem;
+}
+.step-block { margin-bottom: 1.75rem; }
+
+/* Buttons */
+.btn-group { display: flex; gap: 0.25rem; flex-wrap: wrap; }
+.btn {
+  padding: 0.38rem 0.8rem; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text); font-family: inherit;
+  font-size: 0.78rem; cursor: pointer; border-radius: 4px; transition: all 0.1s;
+}
+.btn.active { background: var(--blue); border-color: var(--blue); color: #fff; }
+.btn:hover:not(.active):not(:disabled) { border-color: var(--blue); }
+.btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.btn.loading { opacity: 0.6; }
+
+/* Size controls */
+.size-row { display: flex; align-items: center; gap: 0.75rem; margin-top: 0.6rem; }
+input[type=range] {
+  flex: 1; max-width: 380px; accent-color: var(--blue);
+  cursor: pointer; height: 4px;
+}
+.size-num {
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--text); font-family: inherit; font-size: 0.78rem;
+  padding: 0.35rem 0.55rem; border-radius: 4px; width: 90px;
+  text-align: right;
+}
+.size-hint { color: var(--muted); font-size: 0.72rem; }
+
+/* Custom input panel */
+.custom-panel {
+  margin-top: 0.75rem; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 6px; padding: 0.85rem;
+  display: none;
+}
+.custom-panel.visible { display: block; }
+.custom-panel textarea {
+  width: 100%; height: 90px; background: var(--bg);
+  border: 1px solid var(--border); color: var(--text);
+  font-family: inherit; font-size: 0.75rem; padding: 0.5rem;
+  border-radius: 4px; resize: vertical; outline: none;
+}
+.custom-panel textarea:focus { border-color: var(--blue); }
+.custom-row { display: flex; align-items: center; gap: 0.75rem; margin-top: 0.6rem; }
+.custom-file-label {
+  display: inline-block; padding: 0.35rem 0.75rem;
+  border: 1px dashed var(--border); border-radius: 4px;
+  font-size: 0.75rem; color: var(--muted); cursor: pointer;
+}
+.custom-file-label:hover { border-color: var(--blue); color: var(--text); }
+.custom-file-label input { display: none; }
+#customFileInfo { font-size: 0.75rem; color: var(--muted); }
+
+/* Data preview */
+.preview-box {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 6px; padding: 0.7rem 0.9rem; margin-top: 0.6rem;
+}
+.preview-meta { font-size: 0.7rem; color: var(--muted); margin-bottom: 0.35rem; }
+.preview-meta span { color: var(--text); }
+.preview-bytes {
+  font-size: 0.72rem; color: var(--muted); word-break: break-all;
+  line-height: 1.5; max-height: 3.2rem; overflow: hidden;
+}
+
+/* Divider */
+hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+
+/* Compress button */
+#compressBtn {
+  padding: 0.6rem 2rem; background: var(--blue); border: none;
+  color: #fff; font-family: inherit; font-size: 0.9rem; font-weight: 600;
+  cursor: pointer; border-radius: 5px; transition: opacity 0.1s;
+  margin-top: 0.25rem;
+}
+#compressBtn:hover { opacity: 0.88; }
+#compressBtn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Results */
+#resultsPanel { display: none; margin-top: 1.75rem; }
+#resultsPanel.visible { display: block; }
+.results-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.75rem; margin-bottom: 1.25rem;
+}
+.stat-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 6px; padding: 0.75rem 0.9rem;
+}
+.stat-label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 0.3rem; }
+.stat-value { font-size: 1.05rem; }
+.stat-sub { font-size: 0.7rem; color: var(--muted); margin-top: 0.15rem; }
+.good { color: var(--green); }
+.bad  { color: var(--red); }
+.warn { color: var(--yellow); }
+
+/* Hex dump */
+.hex-section-label {
+  font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.15em;
+  color: var(--muted); margin-bottom: 0.5rem;
+}
+.hex-dump {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 6px; padding: 0.75rem 0.9rem; overflow-x: auto;
+}
+.hex-dump pre {
+  font-size: 0.72rem; line-height: 1.7; color: var(--muted);
+  white-space: pre; margin: 0;
+}
+.hex-offset { color: #4a5170; }
+.hex-bytes  { color: #7c8fbc; }
+.hex-ascii  { color: #556080; }
+
+/* Section */
+.section { margin-bottom: 2.5rem; }
+.section-title {
+  font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.18em;
+  color: var(--muted); margin-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border); padding-bottom: 0.4rem;
+}
+
+/* Table */
+table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+th {
+  text-align: left; padding: 0.45rem 0.75rem; color: var(--muted);
+  font-size: 0.67rem; text-transform: uppercase; letter-spacing: 0.07em;
+  font-weight: normal; border-bottom: 1px solid var(--border);
+}
+td { padding: 0.45rem 0.75rem; border-bottom: 1px solid rgba(45,49,72,0.45); vertical-align: middle; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: rgba(255,255,255,0.018); }
+.bar-cell { width: 160px; }
+.bar-wrap { background: rgba(45,49,72,0.7); border-radius: 3px; height: 9px; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s ease; }
+.tag {
+  display: inline-block; padding: 0.08rem 0.32rem;
+  border-radius: 3px; font-size: 0.65rem; margin-left: 0.3rem;
+}
+.tag-blue   { background: rgba(59,130,246,0.15); color: var(--blue); }
+.tag-orange { background: rgba(249,115,22,0.15);  color: var(--orange); }
+.footnote { color: var(--muted); font-size: 0.7rem; margin-top: 0.85rem; line-height: 1.75; }
+.footnote b { color: var(--text); }
+</style>
+</head>
+<body>
+
+<h1>Compression &amp; Encoding Demo</h1>
+<p class="subtitle">Explore how algorithms behave across different data types</p>
+
+<!-- ── Step 1: Data ─────────────────────────────────────────────────────────── -->
+<div class="step-block">
+  <div class="step-label">1 — Data Source</div>
+  <div class="btn-group" id="dataBtns"></div>
+
+  <!-- Custom input (shown when Custom is selected) -->
+  <div class="custom-panel" id="customPanel">
+    <textarea id="customText" placeholder="Paste any text here…" spellcheck="false"></textarea>
+    <div class="custom-row">
+      <label class="custom-file-label">
+        Load file&hellip;
+        <input type="file" id="fileInput">
+      </label>
+      <span id="customFileInfo">no file loaded</span>
+    </div>
+  </div>
+
+  <!-- Size (hidden for Custom) -->
+  <div id="sizeBlock" style="margin-top:0.85rem;">
+    <div class="step-label" style="margin-bottom:0">Size</div>
+    <div class="size-row">
+      <input type="range" id="sizeSlider" min="1" max="100000" value="4096">
+      <input type="number" class="size-num" id="sizeNum" min="1" max="100000" value="4096">
+      <span class="size-hint">bytes</span>
+    </div>
+  </div>
+
+  <!-- Preview -->
+  <div class="preview-box">
+    <div class="preview-meta"><span id="previewName"></span> &mdash; <span id="previewDesc"></span> &mdash; <span id="previewSize"></span></div>
+    <div class="preview-bytes" id="previewBytes"></div>
+  </div>
+</div>
+
+<!-- ── Step 2: Algorithm ───────────────────────────────────────────────────── -->
+<div class="step-block">
+  <div class="step-label">2 — Algorithm</div>
+  <div class="btn-group" id="algoBtns"></div>
+</div>
+
+<!-- ── Compress ────────────────────────────────────────────────────────────── -->
+<button id="compressBtn">Compress</button>
+
+<!-- ── Results ────────────────────────────────────────────────────────────── -->
+<div id="resultsPanel">
+  <hr>
+  <div class="step-label" style="margin-bottom:1rem">Results</div>
+  <div class="results-grid" id="statsGrid"></div>
+  <div class="hex-section-label">Compressed payload &mdash; first 256 bytes</div>
+  <div class="hex-dump"><pre id="hexDump"></pre></div>
+</div>
+
+<hr>
+
+<!-- ── Redundancy table ────────────────────────────────────────────────────── -->
+<div class="section">
+  <div class="section-title">Redundancy &amp; Fault-Tolerance Reference</div>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:200px">Scheme</th>
+        <th>Input</th>
+        <th>Stored</th>
+        <th>Overhead</th>
+        <th>Fault tolerance</th>
+        <th class="bar-cell">Size (visual)</th>
+      </tr>
+    </thead>
+    <tbody id="redTbody"></tbody>
+  </table>
+  <p class="footnote">
+    * Reed-Solomon overhead is <b>data-independent</b> &mdash; the multiplier is always <b>n/k</b> regardless of content or compressibility.<br>
+    * RS(<i>n</i>,<i>k</i>): <i>k</i> data shards + (<i>n</i>&minus;<i>k</i>) parity shards &mdash; survives any (<i>n</i>&minus;<i>k</i>) lost shards.<br>
+    * Combine compression + erasure coding for best space/resilience tradeoff.
+  </p>
+</div>
+
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
