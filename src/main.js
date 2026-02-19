@@ -524,7 +524,7 @@ document.getElementById('compressBtn').addEventListener('click', async () => {
         value: bytesSaved >= 0 ? fmtBytes(bytesSaved) : '−' + fmtBytes(-bytesSaved),
         sub:   bytesSaved >= 0 ? ((1 - ratio) * 100).toFixed(1) + '% reduction' : 'expansion',
         cls:   bytesSaved > 0 ? 'good' : 'bad' },
-      { label: 'Ratio',           value: ratio.toFixed(4) + '×', sub: ratio < 1 ? 'smaller' : 'larger', cls: ratio < 1 ? 'good' : 'bad' },
+      { label: 'Ratio',           value: ((1 - ratio) * 100).toFixed(1) + '%', sub: ratio < 1 ? 'smaller' : 'larger', cls: ratio < 1 ? 'good' : 'bad' },
       { label: 'Compress time',   value: fmtMs(compressMs),   sub: '', cls: '' },
       { label: 'Decompress time', value: fmtMs(decompressMs), sub: '', cls: '' },
       { label: 'Round-trip',      value: ok ? 'OK' : 'FAIL',  sub: ok ? 'decompressed matches input' : 'mismatch!', cls: ok ? 'good' : 'bad' },
