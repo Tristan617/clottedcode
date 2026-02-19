@@ -2,7 +2,7 @@ name: Build and Deploy to GitHub Pages
 
 on:
   push:
-    branches: [master]
+    branches: [master, 'claude/compression-demo-mvp-8Ch6X']
 
 permissions:
   contents: read
