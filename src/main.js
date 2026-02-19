@@ -321,11 +321,14 @@ function fmtMs(ms) {
 
 function previewStr(data) {
   try {
-    const t = new TextDecoder('utf-8', { fatal: true }).decode(data.slice(0, 400));
-    return t.replace(/[\r\n]+/g, ' ');
+    return new TextDecoder('utf-8', { fatal: true }).decode(data);
   } catch {
-    return Array.from(data.slice(0, 80))
-      .map(b => b.toString(16).padStart(2, '0')).join(' ');
+    const lines = [];
+    for (let off = 0; off < data.length; off += 16) {
+      const row = data.slice(off, off + 16);
+      lines.push(Array.from(row).map(b => b.toString(16).padStart(2, '0')).join(' '));
+    }
+    return lines.join('\n');
   }
 }
 
