@@ -2,6 +2,7 @@ import pako from 'pako';
 import LZ4 from 'lz4js';
 import { ZstdCodec } from 'zstd-codec';
 import BOOK_TEXT from '../pride-and-prejudice?raw';
+import DB_RECORDS_TEXT from '../db-records?raw';
 
 // Injected at build time by vite.config.js
 document.getElementById('buildInfo').textContent =
@@ -11,6 +12,7 @@ document.getElementById('buildInfo').textContent =
 
 const enc = new TextEncoder();
 const BOOK_BYTES = enc.encode(BOOK_TEXT);
+const DB_RECORDS_BYTES = enc.encode(DB_RECORDS_TEXT);
 
 const DATA_TYPES = [
   {
@@ -44,19 +46,9 @@ const DATA_TYPES = [
   {
     key: 'db',
     name: 'DB Records',
-    desc: 'JSON event log rows — structured, repetitive',
+    desc: 'JSON event log rows — 809 unique records',
     generate(n) {
-      const rows = [
-        '{"id":1,"ts":"2024-03-15T08:23:11Z","user":"usr_a4f2","event":"page_view","path":"/dashboard","ms":142,"country":"US"}\n',
-        '{"id":2,"ts":"2024-03-15T08:23:14Z","user":"usr_b9c7","event":"click","path":"/products","ms":38,"country":"DE"}\n',
-        '{"id":3,"ts":"2024-03-15T08:23:19Z","user":"usr_a4f2","event":"api_call","path":"/api/v2/items","ms":307,"country":"US"}\n',
-        '{"id":4,"ts":"2024-03-15T08:23:22Z","user":"usr_k1d3","event":"page_view","path":"/checkout","ms":198,"country":"GB"}\n',
-        '{"id":5,"ts":"2024-03-15T08:23:25Z","user":"usr_m7e9","event":"purchase","path":"/order/confirm","ms":512,"country":"CA"}\n',
-      ];
-      const src = enc.encode(rows.join(''));
-      const buf = new Uint8Array(n);
-      for (let i = 0; i < n; i++) buf[i] = src[i % src.length];
-      return buf;
+      return DB_RECORDS_BYTES.slice(0, n);
     }
   },
   {
