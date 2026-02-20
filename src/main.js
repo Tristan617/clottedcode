@@ -152,10 +152,11 @@ const REDUNDANCY = [
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
-let currentDataKey = 'repeated';
-let currentAlgoKey = 'deflate';
-let currentSize    = 4096;
-let customBytes    = null;
+let currentDataKey      = 'repeated';
+let currentAlgoKey      = 'deflate';
+let currentSize         = 4096;
+let customBytes         = null;
+let lastCompressResult  = null; // { origSize, compSize, algoName }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -299,14 +300,38 @@ document.getElementById('fileInput').addEventListener('change', e => {
   reader.readAsArrayBuffer(file);
 });
 
-// Redundancy table (reference, fixed at 4 KB input)
-(function buildRedTable() {
-  const tbody   = document.getElementById('redTbody');
-  const refSize = 4096;
-  const maxOut  = Math.ceil(refSize * 3); // 3× replication is the widest bar
+// Redundancy table — updates after each compression run
+function buildRedTable() {
+  const origSize = lastCompressResult ? lastCompressResult.origSize : 4096;
+  const compSize = lastCompressResult ? lastCompressResult.compSize : 4096;
+  const isRef    = !lastCompressResult;
+
+  // Summary line above the table
+  const summary = document.getElementById('redSummary');
+  if (isRef) {
+    summary.innerHTML =
+      '<span class="red-ref-note">Showing 4 KB reference &mdash; run a compression to see live results.</span>';
+  } else {
+    const ratio   = (compSize / origSize * 100).toFixed(1);
+    const saved   = origSize - compSize;
+    const saveCls = saved >= 0 ? 'good' : 'bad';
+    summary.innerHTML =
+      `${fmtBytes(origSize)} original &rarr; ` +
+      `${fmtBytes(compSize)} compressed ` +
+      `<span class="${saveCls}">(${ratio}% of original)</span> ` +
+      `&rarr; on-disk sizes per scheme below`;
+  }
+
+  const tbody    = document.getElementById('redTbody');
+  tbody.innerHTML = '';
+
+  // Bar scale: widest bar = 3× replication of compressed bytes
+  const maxOnDisk = Math.ceil(compSize * 3);
+
   REDUNDANCY.forEach(r => {
     const mult    = r.n / r.k;
-    const outSz   = Math.ceil(refSize * mult);
+    const onDisk  = Math.ceil(compSize * mult);
+    const netPct  = (onDisk / origSize - 1) * 100;
     const ftol    = r.n - r.k;
     const tag     = r.type === 'rs'
       ? '<span class="tag tag-blue">erasure</span>'
@@ -314,13 +339,17 @@ document.getElementById('fileInput').addEventListener('change', e => {
     const ftolStr = r.type === 'replication'
       ? `${ftol} full-copy loss`
       : `${ftol} shard loss (of ${r.n})`;
-    const barPct  = (outSz / maxOut * 100).toFixed(1);
+    const barPct  = (onDisk / maxOnDisk * 100).toFixed(1);
+    const netCls  = netPct <= 0 ? 'good' : 'bad';
+    const netSign = netPct > 0 ? '+' : '';
+
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${r.name}${tag}</td>
-      <td>${fmtBytes(refSize)}</td>
-      <td>${fmtBytes(outSz)}</td>
-      <td class="bad">${mult.toFixed(2)}&times;</td>
+      <td>${fmtBytes(origSize)}</td>
+      <td>${fmtBytes(compSize)}</td>
+      <td>${fmtBytes(onDisk)}</td>
+      <td class="${netCls}">${netSign}${netPct.toFixed(1)}%</td>
       <td>${ftolStr}</td>
       <td class="bar-cell">
         <div class="bar-wrap">
@@ -329,7 +358,8 @@ document.getElementById('fileInput').addEventListener('change', e => {
       </td>`;
     tbody.appendChild(tr);
   });
-})();
+}
+buildRedTable();
 
 // ── Compress button ───────────────────────────────────────────────────────────
 
@@ -396,6 +426,10 @@ document.getElementById('compressBtn').addEventListener('click', async () => {
     });
 
     document.getElementById('hexDump').innerHTML = hexDump(compressed, 256);
+
+    // Update redundancy table with actual compression result
+    lastCompressResult = { origSize: input.length, compSize: compressed.length, algoName: algo.name };
+    buildRedTable();
 
     const panel = document.getElementById('resultsPanel');
     panel.classList.add('visible');
