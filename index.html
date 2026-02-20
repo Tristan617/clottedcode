@@ -177,6 +177,12 @@ tr:hover td { background: rgba(255,255,255,0.018); }
 .tag-orange { background: rgba(249,115,22,0.15);  color: var(--orange); }
 .footnote { color: var(--muted); font-size: 0.7rem; margin-top: 0.85rem; line-height: 1.75; }
 .footnote b { color: var(--text); }
+.red-summary {
+  font-size: 0.78rem; margin-bottom: 0.75rem;
+  padding: 0.5rem 0.75rem; border-radius: 5px;
+  background: var(--surface); border: 1px solid var(--border);
+}
+.red-ref-note { color: var(--muted); }
 </style>
 </head>
 <body>
@@ -241,13 +247,15 @@ tr:hover td { background: rgba(255,255,255,0.018); }
 <!-- ── Redundancy table ────────────────────────────────────────────────────── -->
 <div class="section">
   <div class="section-title">Redundancy &amp; Fault-Tolerance Reference</div>
+  <div id="redSummary" class="red-summary"></div>
   <table>
     <thead>
       <tr>
         <th style="width:200px">Scheme</th>
-        <th>Input</th>
-        <th>Stored</th>
-        <th>Overhead</th>
+        <th>Original</th>
+        <th>Compressed</th>
+        <th>On-disk</th>
+        <th>Net overhead</th>
         <th>Fault tolerance</th>
         <th class="bar-cell">Size (visual)</th>
       </tr>
@@ -255,6 +263,7 @@ tr:hover td { background: rgba(255,255,255,0.018); }
     <tbody id="redTbody"></tbody>
   </table>
   <p class="footnote">
+    * <b>Net overhead</b> = (on-disk &minus; original) / original &times; 100. Negative means compression savings outweigh redundancy cost.<br>
     * Reed-Solomon overhead is <b>data-independent</b> &mdash; the multiplier is always <b>n/k</b> regardless of content or compressibility.<br>
     * RS(<i>n</i>,<i>k</i>): <i>k</i> data shards + (<i>n</i>&minus;<i>k</i>) parity shards &mdash; survives any (<i>n</i>&minus;<i>k</i>) lost shards.<br>
     * Combine compression + erasure coding for best space/resilience tradeoff.
