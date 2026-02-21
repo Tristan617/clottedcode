@@ -155,6 +155,7 @@ const REDUNDANCY = [
 let currentDataKey      = 'repeated';
 let currentAlgoKey      = 'deflate';
 let currentSize         = 4096;
+let currentMetadataSize = 64;
 let customBytes         = null;
 let lastCompressResult  = null; // { origSize, compSize, algoName }
 
@@ -280,6 +281,64 @@ function setSize(v) {
 slider.addEventListener('input',  e => setSize(parseInt(e.target.value, 10)));
 numBox.addEventListener('change', e => setSize(parseInt(e.target.value, 10)));
 
+// Metadata size controls
+const metaSlider = document.getElementById('metaSizeSlider');
+const metaNumBox = document.getElementById('metaSizeNum');
+function setMetaSize(v) {
+  v = Math.max(0, Math.min(4096, v));
+  currentMetadataSize = v;
+  metaSlider.value = v;
+  metaNumBox.value = v;
+  updateBlockStats();
+  buildRedTable();
+}
+metaSlider.addEventListener('input',  e => setMetaSize(parseInt(e.target.value, 10)));
+metaNumBox.addEventListener('change', e => setMetaSize(parseInt(e.target.value, 10)));
+
+// Block stats — payload compression results combined with metadata overhead
+function updateBlockStats() {
+  if (!lastCompressResult) return;
+  const { origSize, compSize } = lastCompressResult;
+  const meta        = currentMetadataSize;
+  const totalOrig   = origSize + meta;
+  const totalStored = compSize + meta;
+  const blockSaved  = totalOrig - totalStored;
+  const blockRatio  = totalOrig > 0 ? totalStored / totalOrig : 1;
+
+  const blockStats = [
+    { label: 'Metadata size',
+      value: fmtBytes(meta),
+      sub:   'uncompressed, fixed overhead',
+      cls:   '' },
+    { label: 'Original block',
+      value: fmtBytes(totalOrig),
+      sub:   'payload + metadata',
+      cls:   '' },
+    { label: 'Stored block',
+      value: fmtBytes(totalStored),
+      sub:   (blockRatio * 100).toFixed(1) + '% of original block',
+      cls:   blockRatio < 1 ? 'good' : blockRatio > 1 ? 'bad' : '' },
+    { label: 'Block savings',
+      value: blockSaved >= 0 ? fmtBytes(blockSaved) : '−' + fmtBytes(-blockSaved),
+      sub:   blockSaved > 0
+               ? ((1 - blockRatio) * 100).toFixed(1) + '% smaller block'
+               : blockSaved < 0 ? 'block expanded' : 'no change',
+      cls:   blockSaved > 0 ? 'good' : blockSaved < 0 ? 'bad' : '' },
+  ];
+
+  const grid = document.getElementById('blockStatsGrid');
+  grid.innerHTML = '';
+  blockStats.forEach(s => {
+    const card = document.createElement('div');
+    card.className = 'stat-card';
+    card.innerHTML = `
+      <div class="stat-label">${s.label}</div>
+      <div class="stat-value ${s.cls}">${s.value}</div>
+      ${s.sub ? `<div class="stat-sub">${s.sub}</div>` : ''}`;
+    grid.appendChild(card);
+  });
+}
+
 // Custom input
 document.getElementById('customText').addEventListener('input', () => {
   customBytes = null;
@@ -302,36 +361,46 @@ document.getElementById('fileInput').addEventListener('change', e => {
 
 // Redundancy table — updates after each compression run
 function buildRedTable() {
-  const origSize = lastCompressResult ? lastCompressResult.origSize : 4096;
-  const compSize = lastCompressResult ? lastCompressResult.compSize : 4096;
-  const isRef    = !lastCompressResult;
+  const payloadOrig = lastCompressResult ? lastCompressResult.origSize : 4096;
+  const payloadComp = lastCompressResult ? lastCompressResult.compSize : 4096;
+  const meta        = currentMetadataSize;
+  // Total block sizes: metadata passes through uncompressed
+  const origSize    = payloadOrig + meta;
+  const compSize    = payloadComp + meta;
+  const isRef       = !lastCompressResult;
 
   // Summary line above the table
   const summary = document.getElementById('redSummary');
   if (isRef) {
+    const refDesc = meta > 0
+      ? `4 KB payload + ${fmtBytes(meta)} metadata = ${fmtBytes(4096 + meta)} block`
+      : '4 KB reference';
     summary.innerHTML =
-      '<span class="red-ref-note">Showing 4 KB reference &mdash; run a compression to see live results.</span>';
+      `<span class="red-ref-note">Showing ${refDesc} &mdash; run a compression to see live results.</span>`;
   } else {
-    const ratio   = (compSize / origSize * 100).toFixed(1);
-    const saved   = origSize - compSize;
-    const saveCls = saved >= 0 ? 'good' : 'bad';
+    const payloadRatio = (payloadComp / payloadOrig * 100).toFixed(1);
+    const blockRatio   = origSize > 0 ? (compSize / origSize * 100).toFixed(1) : '100.0';
+    const metaPart     = meta > 0
+      ? ` + <span style="color:var(--muted)">${fmtBytes(meta)} metadata</span>` : '';
     summary.innerHTML =
-      `${fmtBytes(origSize)} original &rarr; ` +
-      `${fmtBytes(compSize)} compressed ` +
-      `<span class="${saveCls}">(${ratio}% of original)</span> ` +
-      `&rarr; on-disk sizes per scheme below`;
+      `Payload: ${fmtBytes(payloadOrig)} &rarr; ${fmtBytes(payloadComp)} compressed ` +
+      `<span class="${payloadComp <= payloadOrig ? 'good' : 'bad'}">(${payloadRatio}%)</span>` +
+      `${metaPart} &mdash; ` +
+      `Block: ${fmtBytes(origSize)} &rarr; ` +
+      `<span class="${compSize <= origSize ? 'good' : 'bad'}">${fmtBytes(compSize)} stored (${blockRatio}%)</span>` +
+      ` &rarr; on-disk per scheme below`;
   }
 
   const tbody    = document.getElementById('redTbody');
   tbody.innerHTML = '';
 
-  // Bar scale: widest bar = 3× replication of compressed bytes
+  // Bar scale: widest bar = 3× replication of stored block
   const maxOnDisk = Math.ceil(compSize * 3);
 
   REDUNDANCY.forEach(r => {
     const mult    = r.n / r.k;
     const onDisk  = Math.ceil(compSize * mult);
-    const netPct  = (onDisk / origSize - 1) * 100;
+    const netPct  = origSize > 0 ? (onDisk / origSize - 1) * 100 : 0;
     const ftol    = r.n - r.k;
     const tag     = r.type === 'rs'
       ? '<span class="tag tag-blue">erasure</span>'
@@ -427,8 +496,9 @@ document.getElementById('compressBtn').addEventListener('click', async () => {
 
     document.getElementById('hexDump').innerHTML = hexDump(compressed, 256);
 
-    // Update redundancy table with actual compression result
+    // Update block stats and redundancy table with actual compression result
     lastCompressResult = { origSize: input.length, compSize: compressed.length, algoName: algo.name };
+    updateBlockStats();
     buildRedTable();
 
     const panel = document.getElementById('resultsPanel');

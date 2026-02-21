@@ -209,10 +209,20 @@ tr:hover td { background: rgba(255,255,255,0.018); }
 
   <!-- Size (hidden for Custom) -->
   <div id="sizeBlock" style="margin-top:0.85rem;">
-    <div class="step-label" style="margin-bottom:0">Size</div>
+    <div class="step-label" style="margin-bottom:0">Payload size</div>
     <div class="size-row">
       <input type="range" id="sizeSlider" min="1" max="100000" value="4096">
       <input type="number" class="size-num" id="sizeNum" min="1" max="100000" value="4096">
+      <span class="size-hint">bytes</span>
+    </div>
+  </div>
+
+  <!-- Metadata size (always visible, conceptual — not compressed) -->
+  <div id="metaSizeBlock" style="margin-top:0.85rem;">
+    <div class="step-label" style="margin-bottom:0">Metadata size <span style="text-transform:none;letter-spacing:0;color:var(--muted);font-size:0.68rem">&mdash; per block, not compressed</span></div>
+    <div class="size-row">
+      <input type="range" id="metaSizeSlider" min="0" max="4096" value="64">
+      <input type="number" class="size-num" id="metaSizeNum" min="0" max="4096" value="64">
       <span class="size-hint">bytes</span>
     </div>
   </div>
@@ -237,8 +247,16 @@ tr:hover td { background: rgba(255,255,255,0.018); }
 <div id="resultsPanel">
   <hr>
   <div class="step-label" style="margin-bottom:1rem">Results</div>
+
+  <div class="hex-section-label" style="margin-bottom:0.5rem">Payload compression</div>
   <div class="results-grid" id="statsGrid"></div>
-  <div class="hex-section-label">Compressed payload &mdash; first 256 bytes</div>
+
+  <div id="blockStatsSection" style="margin-top:1.25rem;">
+    <div class="hex-section-label" style="margin-bottom:0.5rem">Total block &mdash; compressed payload + metadata</div>
+    <div class="results-grid" id="blockStatsGrid"></div>
+  </div>
+
+  <div class="hex-section-label" style="margin-top:1.25rem;">Compressed payload &mdash; first 256 bytes</div>
   <div class="hex-dump"><pre id="hexDump"></pre></div>
 </div>
 
@@ -252,8 +270,8 @@ tr:hover td { background: rgba(255,255,255,0.018); }
     <thead>
       <tr>
         <th style="width:200px">Scheme</th>
-        <th>Original</th>
-        <th>Compressed</th>
+        <th>Orig block</th>
+        <th>Stored block</th>
         <th>On-disk</th>
         <th>Net overhead</th>
         <th>Fault tolerance</th>
@@ -263,7 +281,8 @@ tr:hover td { background: rgba(255,255,255,0.018); }
     <tbody id="redTbody"></tbody>
   </table>
   <p class="footnote">
-    * <b>Net overhead</b> = (on-disk &minus; original) / original &times; 100. Negative means compression savings outweigh redundancy cost.<br>
+    * <b>Orig block</b> = uncompressed payload + metadata. <b>Stored block</b> = compressed payload + metadata (metadata is not compressed).<br>
+    * <b>Net overhead</b> = (on-disk &minus; orig block) / orig block &times; 100. Negative means compression savings outweigh redundancy cost.<br>
     * Reed-Solomon overhead is <b>data-independent</b> &mdash; the multiplier is always <b>n/k</b> regardless of content or compressibility.<br>
     * RS(<i>n</i>,<i>k</i>): <i>k</i> data shards + (<i>n</i>&minus;<i>k</i>) parity shards &mdash; survives any (<i>n</i>&minus;<i>k</i>) lost shards.<br>
     * Combine compression + erasure coding for best space/resilience tradeoff.
